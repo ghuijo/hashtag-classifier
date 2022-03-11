@@ -4,6 +4,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+workspace = "E:/workspace/hashtag-classifier/"
+
 BATCH_SIZE = 32
 LR = 0.001
 EPOCHS = 10
@@ -12,24 +14,17 @@ USE_CUDA = torch.cuda.is_available()
 DEVICE = torch.device("cuda" if USE_CUDA else "cpu")
 print("다음 기기로 학습 진행: ", DEVICE)
 
-labels = ['농업', '교육', '기술', '제도', '고용',
-          '근로', '지원', '사업', '교통', '정책',
-          '행정', '모집', '대학', '주거', '청년',
-          '중국', '투자', '소방', '화재', '안전',
+labels = ['농업', '교육', '기술', '제도', '고용', '근로', '지원', '사업', '교통', '정책',
+          '행정', '모집', '대학', '주거', '청년', '중국', '투자', '소방', '화재', '안전',
           '문화', '의료']
 
-#   print(os.getcwd())
-
-df = pd.read_csv("E:/workspace/hashtag-classifier/data/train_label01.csv", encoding="UTF-8")
+df = pd.read_csv("data/train_label01.csv", encoding="UTF-8")
 
 x_data = df.words   #bag of words
 y_data = df.hashtags    #labels(hashtags)
 
 x_data = x_data[:100]
 y_data = y_data[:100]
-
-#   print(x_data[0])
-#   print(y_data[0])
 
 x_data.build_vocab()
 y_data.build_vocab()
