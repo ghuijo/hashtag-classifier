@@ -1,11 +1,13 @@
 import json
 import pandas as pd
 
+workspace = "E:/workspace/hashtag-classifier/"
+
 valid_categories = ['정치', '경제', '사회']
 
 total = pd.DataFrame()
 
-with open("../data/train_original.json", "r", encoding="utf8") as f:
+with open(workspace + "data/train_original.json", "r", encoding="utf8") as f:
     contents = f.read() # string 타입
     json_data = json.loads(contents)
     all = json_data # 전체 JSON을 dict type으로 가져옴
@@ -48,4 +50,4 @@ with open("../data/train_original.json", "r", encoding="utf8") as f:
                 new_df = pd.DataFrame(new_data)
                 total = pd.concat([total, new_df])
 
-total.to_csv("../../bow/data/train02.csv", index=False, encoding="utf-8-sig")
+total.to_csv(workspace+ "data/train02.csv", index=False, encoding="utf-8-sig")
