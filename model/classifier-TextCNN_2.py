@@ -1,5 +1,5 @@
-#workspace = "E:/workspace/hashtag-classifier/"
-workspace = "C:/users/eldel/documents/workspace/hashtag-classifier/"
+workspace = "E:/workspace/hashtag-classifier/"
+#workspace = "C:/users/eldel/documents/workspace/hashtag-classifier/"
 
 # 데이터 불러오기
 from gettext import npgettext
@@ -23,7 +23,7 @@ kkma = Kkma()
 #df['article_token'] = df.article.apply(kkma.morphs)
 df['words_token'] = df.words.apply(kkma.morphs)
 
-df_drop = [['words_token', 'hashtags']]
+df_drop = df[['words_token', 'hashtags']]
 
 
 # 단어 임베딩
@@ -53,13 +53,13 @@ rng = RandomState()
 tr = df_drop.sample(frac=0.8, random_state=rng)
 val = df_drop.loc[~df_drop.index.isin(tr.index)]
 
-tr.to_csv('data/train.csv', index=False, encoding='utf-8-sig')
-val.to_csv('data/validation.csv', index=False, encoding='utf-8-sig')
+tr.to_csv(workspace + 'data/train.csv', index=False, encoding='utf-8-sig')
+val.to_csv(workspace + 'data/validation.csv', index=False, encoding='utf-8-sig')
 
 
 # Field 클래스 정의
 import torchtext
-from torchtext.data import Field
+from torchtext.legacy.data import Field
 
 def tokenizer(text):
       text = re.sub('[\[\]\']', '', str(text))
@@ -71,9 +71,9 @@ LABEL = Field(sequential = False)
 
 
 # 데이터 불러오기
-from torchtext.data import TabularDataset
+from torchtext.legacy.data import TabularDataset
 
-train, validation = TabularDataset.splits(
+tra, validat = TabularDataset.splits(
       path = workspace + 'data/',
       train = 'train.csv',
       validation = 'validation.csv',
@@ -82,27 +82,27 @@ train, validation = TabularDataset.splits(
       skip_header = True
 )
 
-print("Train:", train[0].text, train[0].label)
-print("Validation:", validation[0].text, validation[0].label)
+print("Train:", tra[0].text, tra[0].label)
+print("Validation:", validat[0].text, validat[0].label)
 
 
 # 단어장 및 DataLoader 정의
 import torch
 from torchtext.vocab import Vectors
-from torchtext.data import BucketIterator
+from torchtext.legacy.data import BucketIterator
 
-vectors = Vectors(name = workspace + "data/petitions_tokens_w2v")
+vectors = Vectors(name = workspace + "data/tokens_w2v_900")
 
-TEXT.build_vocab(train,
+TEXT.build_vocab(tra,
                  vectors = vectors, min_freq = 1, max_size = None)
-LABEL.build_vocab(train)
+LABEL.build_vocab(tra)
 vocab = TEXT.vocab
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 train_iter, validation_iter = BucketIterator.splits(
-      datasets = (train, validation),
-      batch_size = 8,
+      datasets = (tra, validat),
+      batch_size = 3,
       device = device,
       sort = False
 )
@@ -111,7 +111,6 @@ print('임베딩 벡터의 개수와 차원 : {} '.format(TEXT.vocab.vectors.sha
 
 
 # TextCNN 모델링
-
 import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
@@ -139,31 +138,31 @@ class TextCNN(nn.Module):
             logit = self.fc(fc_x)
             return logit
       
-      def train(model, device, train_itr, optimizer):
-            model.train()
-            corrects, train_loss = 0.0,0
+def train(model, device, train_itr, optimizer):
+      model.train()
+      corrects, train_loss = 0.0,0
             
-            for batch in train_itr:
-                  text, target = batch.text, batch.label
-                  text = torch.tranpose(text, 0, 1)
-                  target.data.sub_(1)
-                  text, target = text.to(device), target.to(device)
-                  
-                  optimizer.zero_grad()
-                  logit = model(text)
-                  
-                  loss = F.cross_entropy(logit, target)
-                  loss.backward()
-                  optimizer.step()
-                  
-                  train_loss += loss.item()
-                  result = torch.max(logit, 1)[1]
-                  corrects += (result.view(target.size()).data == target.data).sum()
-                  
-            train_loss /= len(train_itr.dataset)
-            accuracy = 100.0 * corrects / len(train_itr.dataset)
+      for batch in train_itr:
+            text, target = batch.text, batch.label
+            text = torch.transpose(text, 0, 1)
+            target.data.sub_(1)
+            text, target = text.to(device), target.to(device)
             
-            return train_loss, accuracy
+            optimizer.zero_grad()
+            logit = model(text)
+            
+            loss = F.cross_entropy(logit, target)
+            loss.backward()
+            optimizer.step()
+            
+            train_loss += loss.item()
+            result = torch.max(logit, 1)[1]
+            corrects += (result.view(target.size()).data == target.data).sum()
+            
+      train_loss /= len(train_itr.dataset)
+      accuracy = 100.0 * corrects / len(train_itr.dataset)
+      
+      return train_loss, accuracy
       
 def evaluate(model, device, itr):
       model.eval()
@@ -187,25 +186,26 @@ def evaluate(model, device, itr):
       accuracy = 100.0 * corrects / len(itr.dataset)
             
       return test_loss, accuracy
-      
-model = TextCNN(vocab, 100, 10, [3, 4, 5], 2).to(device)
-print(model)
 
 
 # 모델 학습 & 성능 확인
+model = TextCNN(vocab, 100, 10, [3, 4, 5], 16).to(device)
+print(model)
+
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 optimizer = optim.Adam(model.parameters(), lr=0.001)
 best_test_acc = -1
 
-for epoch in range(1, 3+1):
+for epoch in range(1, 200):
       tr_loss, tr_acc = train(model, device, train_iter, optimizer)
       
       print('Train Epoch: {} \t Loss: {} \t Accuracy: {}%'.format(epoch, tr_loss, tr_acc))
-      val_loss, val_acc = evaluate(model, device, validation_iter)
-      print('Valid Epoch: {} \t Loss: {} \t Accuracy: {}%'.format(epoch, val_loss, val_acc))
-      
-      if val_acc > best_test_acc:
-            best_test_acc = val_acc
-            print('model saves at {} accuracy'.format(best_test_acc))
-            torch.save(model.state_dict(), "TextCNN_Best_Validation")
-      print('------------------------------------------------------------')
+
+val_loss, val_acc = evaluate(model, device, validation_iter)
+print('Valid Epoch: {} \t Loss: {} \t Accuracy: {}%'.format(epoch, val_loss, val_acc))
+
+if val_acc > best_test_acc:
+      best_test_acc = val_acc
+      print('model saves at {} accuracy'.format(best_test_acc))
+      torch.save(model.state_dict(), workspace + "result/TextCNN_Best_Validation")
+print('------------------------------------------------------------')
