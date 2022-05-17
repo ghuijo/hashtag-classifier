@@ -1,7 +1,6 @@
-workspace = "E:/workspace/hashtag-classifier/"
-#workspace = "C:/users/eldel/documents/workspace/hashtag-classifier/"
+workspace = "E:/workspaceU/hashtag-classifier/"
 
-is_train = "train"
+is_train = True
 
 import pandas as pd
 import re
@@ -10,22 +9,22 @@ from gensim.models import Word2Vec
 from gensim.models import KeyedVectors
 from numpy.random import RandomState
 
-if is_train == 'train':
+if is_train:
       # 데이터 불러오기
-      df = pd.read_csv(workspace + "data/data_articles.csv", encoding="UTF-8")
+      df = pd.read_csv(workspace + "data/v2_688.csv", encoding="UTF-8")
 
       # 전처리
       def remove_unnecessary(document):
             document = re.sub(r'[\t\r\n\f\v]', ' ', str(document))
-            document = re.sub('[^ ㄱ-ㅣ 가-힣 0-9]+', ' ', str(document))
+            document = re.sub('[^ ㄱ-ㅣ 가-힣 0-9 a-z A-Z]+', ' ', str(document))
             return document
+      df.words = df.words.apply(remove_unnecessary)
       #df.article = df.article.apply(remove_unnecessary)
-      df.article = df.article.apply(remove_unnecessary)
 
       # 토크나이징
       kkma = Kkma()
-      #df['article_token'] = df.article.apply(kkma.morphs)
-      df['words_token'] = df.article.apply(kkma.morphs)
+      df['words_token'] = df.words.apply(kkma.morphs)
+      #df['words_token'] = df.article.apply(kkma.morphs)
       df_drop = df[['words_token', 'hashtags']]
 
       # 단어 임베딩
@@ -35,21 +34,17 @@ if is_train == 'train':
                               window = 2,
                               min_count = 1,
                               workers = 4)
-      #model_result = embedding_model.wv.most_similar("농업")
-      #print(model_result)
 
       # 임베딩 모델 저장 및 로드
-      embedding_model.wv.save_word2vec_format(workspace + "data/tokens_w2v_articles")
-      loaded_model = KeyedVectors.load_word2vec_format(workspace + "data/tokens_w2v_articles")
-      #model_result = loaded_model.most_similar("농업")
-      #print(model_result)
+      embedding_model.wv.save_word2vec_format(workspace + "data/tokens/tokens_v2_2")
+      loaded_model = KeyedVectors.load_word2vec_format(workspace + "data/tokens/tokens_v2_2")
 
       # 데이터셋 분할 및 저장
       rng = RandomState()
       tr = df_drop.sample(frac=0.8, random_state=rng)
       val = df_drop.loc[~df_drop.index.isin(tr.index)]
-      tr.to_csv(workspace + 'data/train2.csv', index=False, encoding='utf-8-sig')
-      val.to_csv(workspace + 'data/validation2.csv', index=False, encoding='utf-8-sig')
+      tr.to_csv(workspace + 'data/train_v2_2.csv', index=False, encoding='utf-8-sig')
+      val.to_csv(workspace + 'data/validation_v2_2.csv', index=False, encoding='utf-8-sig')
 
 
 # Field 클래스 정의
@@ -65,17 +60,15 @@ LABEL = Field(sequential = False)
 from torchtext.legacy.data import TabularDataset
 tra, validat = TabularDataset.splits(
       path = workspace + 'data/',
-      train = 'train2.csv',
-      validation = 'validation2.csv',
+      train = 'train_v2_2.csv',
+      validation = 'validation_v2_2.csv',
       format = 'csv',
       fields = [('text', TEXT), ('label', LABEL)],
       skip_header = True
 )
-#print("Train:", tra[0].text, tra[0].label)
-#print("Validation:", validat[0].text, validat[0].label)
 
 test = TabularDataset(
-      path = workspace + 'data/validation2.csv',
+      path = workspace + 'data/validation_v2_2.csv',
       format = 'csv',
       fields = [('text', TEXT), ('label', LABEL)],
       skip_header = True
@@ -86,13 +79,15 @@ import torch
 from torchtext.vocab import Vectors
 from torchtext.legacy.data import BucketIterator
 
-vectors = Vectors(name = workspace + "data/tokens_w2v_articles")
+vectors = Vectors(name = workspace + "data/tokens/tokens_v2_2")
 
-TEXT.build_vocab(tra,
-                 vectors = vectors, min_freq = 1, max_size = None)
-LABEL.build_vocab(tra)
+TEXT.build_vocab(tra, vectors = vectors, min_freq = 1, max_size = None)
 vocab = TEXT.vocab
-#print('임베딩 벡터의 개수와 차원 : {} '.format(TEXT.vocab.vectors.shape))
+
+LABEL.build_vocab(tra)
+embedded = {}
+for key, value in LABEL.vocab.stoi.items():
+    if value != 0: embedded[value-1] = key
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -176,7 +171,9 @@ def evaluate(model, device, itr):
             text, target = text.to(device), target.to(device)
                   
             logit = model(text)
-            loss = F.cross_entropy(logit, target)
+            #loss = F.cross_entropy(logit, target)
+            cross_entropy_loss = nn.CrossEntropyLoss()
+            loss = cross_entropy_loss(logit, target)
                   
             test_loss += loss.item()
             result = torch.max(logit, 1)[1]
@@ -189,46 +186,67 @@ def evaluate(model, device, itr):
 
 def predict(model, device, itr):
       model.eval()
-            
+      
+      results = []
+      batchs = 0
+      
       for batch in itr:
             text = batch.text
             target = batch.label
             text = torch.transpose(text, 0, 1)
             target.data.sub_(1)
             text, target = text.to(device), target.to(device)
-                  
+            
             logit = model(text)
 
             result = torch.max(logit, 1)[1]
-            #outs = result.view(target.size()).data
+            print(target, end=" ")
+            #print(result)
+            results.append(result)
+            batchs += 1
+      print()
 
-      return result
+      return results, batchs
 
+def tensortoword(results, batchs):      
+      for bat in range(0, batchs):
+            embelist = results[bat].tolist()
+            for index in range(0, 3):
+                  print("predict 결과:", embelist[index], embedded[embelist[index]], " ")
+            print()
 
 # 모델 학습 & 성능 확인
-model = TextCNN(vocab, 100, 10, [3, 4, 5], 16).to(device)
+model = TextCNN(vocab, 100, 10, [3, 4, 5], 12).to(device)
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 optimizer = optim.Adam(model.parameters(), lr=0.001)
 best_test_acc = -1
 
-if is_train == 'train':
-      for epoch in range(1, 100):
+if is_train:
+      #v2로 파인튜닝
+      #model.load_state_dict(torch.load(workspace + "result/TextCNN_Best_Validation_0502_3")) 
+      for epoch in range(1, 101):
             tr_loss, tr_acc = train(model, device, train_iter, optimizer)
-            
             print('Train Epoch: {} \t Loss: {} \t Accuracy: {}%'.format(epoch, tr_loss, tr_acc))
-      torch.save(model.state_dict(), workspace + "result/TextCNN_2")
-      torch.save(model, workspace + "result/TextCNN_model_2")
-      
-      val_loss, val_acc = evaluate(model, device, validation_iter)
-      print('Valid Epoch: {} \t Loss: {} \t Accuracy: {}%'.format(epoch, val_loss, val_acc))
+            
+            val_loss, val_acc = evaluate(model, device, validation_iter)
+            print('Valid Epoch: {} \t Loss: {} \t Accuracy: {}%'.format(epoch, val_loss, val_acc))
 
-      if val_acc > best_test_acc:
-            best_test_acc = val_acc
-            print('model saves at {} accuracy'.format(best_test_acc))
-            torch.save(model.state_dict(), workspace + "result/TextCNN_Best_Validation_2")
+            if val_acc > best_test_acc:
+                  best_test_acc = val_acc
+                  print('model saves at {} accuracy'.format(best_test_acc))
+                  torch.save(model.state_dict(), workspace + "result/Best_Validation_v2_2")
+      # torch.save(model.state_dict(), workspace + "result/TextCNN_v4_2")
+      # torch.save(model, workspace + "result/TextCNN_model_v4_2")
+      # val_loss, val_acc = evaluate(model, device, validation_iter)
+      # print('Valid Epoch: {} \t Loss: {} \t Accuracy: {}%'.format(epoch, val_loss, val_acc))
+      # if val_acc > best_test_acc:
+      #       best_test_acc = val_acc
+      #       print('model saves at {} accuracy'.format(best_test_acc))
+      #       torch.save(model.state_dict(), workspace + "result/TextCNN_Best_Validation_v4_2")
       print('------------------------------------------------------------')
 else:
-      model.load_state_dict(torch.load(workspace + "result/TextCNN_Best_Validation_2")) 
-      outputs = predict(model, device, test_iter)
-      print('Predicted: ', outputs)
+      model.load_state_dict(torch.load(workspace + "result/Best_Validation_v2_2"))
+      results, batchs = predict(model, device, test_iter)
+      tensortoword(results, batchs)
+      #print('Predicted: ', outputs)
