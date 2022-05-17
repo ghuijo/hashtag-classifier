@@ -3,12 +3,12 @@ kkma = Kkma()
 import re
 import pandas as pd
 
-#workspace = "E:/workspace/hashtag-classifier/"
-workspace = "C:/users/eldel/documents/workspace/hashtag-classifier/"
+workspace = "E:/workspaceU/hashtag-classifier/"
+#workspace = "C:/users/eldel/documents/workspace/hashtag-classifier/"
 
 def remove_unnecessary(document):
       document = re.sub(r'[\t\r\n\f\v]', ' ', str(document))
-      document = re.sub('[^ ㄱ-ㅣ 가-힣]+', ' ', str(document))
+      document = re.sub('[^ ㄱ-ㅣ 가-힣 0-9 a-z A-Z]+', ' ', str(document)) # 알파벳 숫자 포함으로 수정
       return document
 
 def build_bag_of_words(document):
@@ -44,7 +44,7 @@ def build_bag_of_words(document):
   
   for word in word_to_index.keys():
     index = word_to_index.get(word)
-    if bows[index] >= 4:
+    if bows[index] >= 4:  #4에서 2로 수정
         words2.append(word)
 
   return word_to_index, bows, words2
@@ -72,4 +72,4 @@ for i in docs['article'].unique():
     j += 1
     print(j, "added")
     
-total.to_csv(workspace + "data/data_v2_bows.csv", index=False, encoding="utf-8-sig")
+total.to_csv(workspace + "data/data_v2_bows_2.csv", index=False, encoding="utf-8-sig")
