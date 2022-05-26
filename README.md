@@ -9,7 +9,7 @@
 
 ### 구현 모델
 * TextCNN
-* 관련 논문: 
+* 관련 논문: https://arxiv.org/pdf/1408.5882.pdf
 * 사용 언어: python
 * 사용 라이브러리: pytorch, KoNLPy, Gensim, pandas, NumPy 등
 
